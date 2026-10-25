@@ -1,0 +1,68 @@
+
+import os
+import html
+import logging
+import feedparser
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
+
+logging.basicConfig(level=logging.INFO)
+TOKEN = os.environ["BOT_TOKEN"]
+
+FEEDS = [
+    ("TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/"),
+    ("Hacker News", "https://hnrss.org/frontpage"),
+    ("VentureBeat AI", "https://venturebeat.com/category/ai/feed/"),
+]
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 AI Trend Hunter is ready!\n\n"
+        "Use /news for recent AI and technology headlines."
+    )
+
+async def news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔎 Fetching the latest headlines...")
+    headlines = []
+
+    for source, url in FEEDS:
+        try:
+            feed = feedparser.parse(url, request_headers={"User-Agent": "AITrendHunter/1.0"})
+            for item in feed.entries[:3]:
+                title = html.unescape(item.get("title", "Untitled"))
+                link = item.get("link", "")
+                if link.startswith("https://") or link.startswith("http://"):
+                    headlines.append((source, title, link))
+        except Exception:
+            logging.exception("Feed failed: %s", source)
+
+    if not headlines:
+        await update.message.reply_text(
+            "I couldn't retrieve headlines right now. Please try again later."
+        )
+        return
+
+    lines = ["📰 AI & TECH NEWS", ""]
+    for source, title, link in headlines[:10]:
+        lines.append(f"• {title}\n{link}\nSource: {source}\n")
+
+    message = "\n".join(lines)
+    # Telegram messages have a length limit.
+    for start_index in range(0, len(message), 3500):
+        await update.message.reply_text(
+            message[start_index:start_index + 3500],
+            disable_web_page_preview=True,
+        )
+
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("news", news))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
